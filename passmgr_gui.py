@@ -582,47 +582,73 @@ def main(argv=None):
 
     # **If no argv, ask user to open or create a vault**
     if not argv:
-        choice = messagebox.askyesno("Local Password Manager",
+        choice = messagebox.askyesno(APP_TITLE,
                                      "Open an existing vault? (No = Create new)")
         if choice:
             path = filedialog.askopenfilename(title="Open Vault",
                                               filetypes=[("Password Manager Vault","*.pm"),
                                                          ("All Files","*.*")])
             if not path:
-                return 1
+                return 0
             vault_path = path
+            mpw = simpledialog.askstring(APP_TITLE, "Master password:", show="*")
+            if not mpw:
+                return 0
+            master_password = mpw
         else:
             path = filedialog.asksaveasfilename(title="Create New Vault",
                                                 defaultextension=".pm",
                                                 filetypes=[("Password Manager Vault","*.pm"),
                                                            ("All Files","*.*")])
             if not path:
-                return 1
-            pw1 = simpledialog.askstring("Local Password Manager", "Create master password:", show="*")
-            pw2 = simpledialog.askstring("Local Password Manager", "Confirm master password:", show="*")
+                return 0
+            pw1 = simpledialog.askstring(APP_TITLE, "Create master password:", show="*")
+            pw2 = simpledialog.askstring(APP_TITLE, "Confirm master password:", show="*")
             if not pw1 or pw1 != pw2:
-                messagebox.showerror("Local Password Manager","Passwords did not match or were empty.")
+                messagebox.showerror(APP_TITLE,"Passwords did not match or were empty.")
+                return 0
+            try:
+                passmgr.init_vault(path, pw1)
+            except Exception as ex:
+                messagebox.showerror(APP_TITLE, f"Failed to create vault: {ex}")
                 return 1
+            vault_path = path
+            master_password = pw1
             passmgr.init_vault(path, pw1)
             vault_path = path
     else:
         vault_path = argv[0]
         if not os.path.exists(vault_path):
-            if not messagebox.askyesno("Local Password Manager",
+            if not messagebox.askyesno(APP_TITLE,
                                        f"Vault not found:\n{vault_path}\nCreate it now?"):
                 return 2
-            pw1 = simpledialog.askstring("Local Password Manager", "Create master password:", show="*")
-            pw2 = simpledialog.askstring("Local Password Manager", "Confirm master password:", show="*")
+            pw1 = simpledialog.askstring(APP_TITLE, "Create master password:", show="*")
+            pw2 = simpledialog.askstring(APP_TITLE, "Confirm master password:", show="*")
             if not pw1 or pw1 != pw2:
-                messagebox.showerror("Local Password Manager","Passwords did not match or were empty.")
+                messagebox.showerror(APP_TITLE,"Passwords did not match or were empty.")
+                return 0
+            try:
+                passmgr.init_vault(vault_path, pw1)
+            except Exception as ex:
+                messagebox.showerror(APP_TITLE, f"Failed to create vault: {ex}")
                 return 1
-            passmgr.init_vault(vault_path, pw1)
+            master_password = pw1
+        else:
+            # Opening existing via argv: ask for password in GUI
+            mpw = simpledialog.askstring(APP_TITLE, "Master password:", show="*")
+            if not mpw:
+                return 0
+            master_password = mpw
 
     # show window and load model
     root.deiconify()
-    model = VaultModel(vault_path, argv[1] if len(argv) > 1 else None)
+    try:
+        model = VaultModel(vault_path, master_password)
+    except Exception as ex:
+        messagebox.showerror(APP_TITLE, f"Failed to open vault: {ex}")
+        return 1
 
-    # (optional) theme — use resource_path for PyInstaller
+    # Optional theme (works in PyInstaller; safe to ignore if missing)
     def resource_path(rel):
         base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
         return os.path.join(base, rel)
