@@ -35,8 +35,10 @@ try:
     from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 except Exception as e:
-    print("This script requires the 'cryptography' package.\nInstall: pip install cryptography", file=sys.stderr)
-    raise
+    import traceback, sys
+    print("Failed to import 'cryptography'. Details below:", file=sys.stderr)
+    traceback.print_exc()
+    sys.exit(1)
 
 VAULT_VERSION = 1
 MAGIC = b"PMV1"  # file magic/version tag

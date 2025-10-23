@@ -116,7 +116,7 @@ class App(ttk.Frame):
 
         # Left: folder tree
         left = ttk.Frame(paned)
-        self.tree = ttk.Treeview(left, show="tree")
+        self.tree = ttk.Treeview(left, columns=("entry_id",), show="tree")
         vsb = ttk.Scrollbar(left, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -248,7 +248,7 @@ class App(ttk.Frame):
             item_text = f"🔐 {e.title}  ({e.username})"
             iid = self.tree.insert(parent, "end", text=item_text, values=(e.id,))
             # store entry_id in iid tags map via columnless value
-            self.tree.set(iid, column="#0", value=e.id)  # not visible; for retrieval
+            self.tree.set(iid, "entry_id", e.id)
 
         self.current_entry_id = None
         self._clear_detail()
@@ -263,7 +263,7 @@ class App(ttk.Frame):
             return
         iid = sel[0]
         # Extract stored id if this is an entry leaf (has an id mapped)
-        entry_id = self.tree.set(iid, column="#0")
+        entry_id = self.tree.set(iid, "entry_id")
         if not entry_id:
             # clicked a folder; ignore
             return
@@ -361,7 +361,7 @@ class App(ttk.Frame):
         if sel:
             iid = sel[0]
             # If selected node is an entry leaf, use its folder; if folder node, build path from labels
-            entry_id = self.tree.set(iid, column="#0")
+            entry_id = self.tree.set(iid, "entry_id")
             if entry_id:
                 try:
                     e = self.model.get(entry_id)
