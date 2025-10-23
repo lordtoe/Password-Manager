@@ -39,6 +39,8 @@ class VaultModel:
     def __init__(self, path: str, password: str | None = None):
         self.path = path
         self.vault = passmgr.load_vault(path, password)
+        # keep a virtual list of folders so we can create empty ones
+        self.vault.setdefault("folders", [])
 
     # basic adapters
     def save(self):
@@ -75,6 +77,36 @@ class VaultModel:
     def change_master(self):
         passmgr.change_master_password(self.path, self.vault)
 
+    def list_folders(self) -> list[str]:
+        return list(self.vault.get("folders", []))
+
+    def add_folder(self, path: str):
+        path = path.strip("/").replace("\\", "/")
+        if not path:
+            return
+        folders = self.vault.setdefault("folders", [])
+        if path not in folders:
+            folders.append(path)
+            self.vault["updated_at"] = passmgr.now_ts()
+
+    def remove_folder(self, path: str) -> bool:
+        """Removes a folder if it has no entries inside (non-recursive).
+        Returns True if removed."""
+        path = path.strip("/").replace("\\", "/")
+        if not path:
+            return False
+        # refuse if any entry lives in this exact folder or its subfolders
+        for e in self.entries():
+            f = (e.folder or "").strip("/")
+            if f == path or f.startswith(path + "/"):
+                return False
+        try:
+            self.vault["folders"].remove(path)
+            self.vault["updated_at"] = passmgr.now_ts()
+            return True
+        except ValueError:
+            return False
+
 # --- UI ---
 class App(ttk.Frame):
     def __init__(self, master: tk.Tk, model: VaultModel):
@@ -101,8 +133,10 @@ class App(ttk.Frame):
         ttk.Button(toolbar, text="Clear", command=self._clear_search).pack(side=tk.LEFT, padx=(4,12))
 
         ttk.Button(toolbar, text="New Entry", command=self._new_entry).pack(side=tk.LEFT)
+        ttk.Button(toolbar, text="New Folder", command=self._new_folder).pack(side=tk.LEFT, padx=4)
         ttk.Button(toolbar, text="Duplicate", command=self._duplicate_selected).pack(side=tk.LEFT, padx=4)
         ttk.Button(toolbar, text="Delete", command=self._delete_selected).pack(side=tk.LEFT)
+        ttk.Button(toolbar, text="Delete Folder", command=self._delete_folder).pack(side=tk.LEFT)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
         ttk.Button(toolbar, text="Copy User", command=lambda: self._copy_field("username")).pack(side=tk.LEFT)
         ttk.Button(toolbar, text="Copy Pass", command=lambda: self._copy_field("password")).pack(side=tk.LEFT, padx=4)
@@ -271,6 +305,96 @@ class App(ttk.Frame):
         except KeyError:
             return
         self._load_into_detail(e)
+
+    def _current_folder_path(self) -> str:
+        """Return the folder path represented by the selected tree node,
+        or the folder of the selected entry, or '' if none."""
+        sel = self.tree.selection()
+        if not sel:
+            return ""
+        iid = sel[0]
+        # If it’s an entry leaf we need its folder
+        # (change this next line to use your fixed hidden column if you already patched it)
+        try:
+            entry_id = self.tree.set(iid, "entry_id")  # <-- if you haven’t added hidden column yet, see note below
+        except Exception:
+            entry_id = ""
+        if entry_id:
+            try:
+                e = self.model.get(entry_id)
+                return (e.folder or "").strip("/")
+            except KeyError:
+                return ""
+        # Otherwise, climb labels to build folder path
+        parts = []
+        cur = iid
+        while cur:
+            text = self.tree.item(cur, "text")
+            label = text.replace("📁 ", "").strip()
+            if label:
+                parts.insert(0, label)
+            cur = self.tree.parent(cur)
+        return "/".join(parts).strip("/")
+    
+    def _new_folder(self):
+        base = self._current_folder_path()
+        name = simpledialog.askstring(APP_TITLE, "New folder name (use A/B/C for nested):")
+        if not name:
+            return
+        new_path = (base + "/" if base else "") + name.strip("/")
+        # create a new entry inside that folder so it shows up immediately
+        new = Entry(
+            id=str(__import__('uuid').uuid4()),
+            title="New Entry",
+            username="",
+            password="",
+            note="",
+            url="",
+            folder=new_path,
+            created_at=passmgr.now_ts(),
+            updated_at=passmgr.now_ts(),
+        )
+        self.model.add(new)
+        self.model.save()
+        self._refresh_tree()
+        self._select_entry_id(new.id)
+        self._load_into_detail(new)
+
+    def _delete_folder(self):
+        folder = self._current_folder_path()
+        if not folder:
+            messagebox.showinfo(APP_TITLE, "Select a folder to delete.")
+            return
+        # Collect all entries whose folder is this folder or a descendant
+        prefix = folder.strip("/")
+        to_delete = []
+        for e in self.model.entries():
+            f = e.folder.strip("/")
+            if f == prefix or f.startswith(prefix + "/"):
+                to_delete.append(e)
+
+        if not to_delete:
+            messagebox.showinfo(APP_TITLE, f"No entries under '{folder}'.")
+            return
+
+        if not messagebox.askyesno(
+            APP_TITLE,
+            f"Delete folder '{folder}' and {len(to_delete)} entr"
+            f"{'y' if len(to_delete)==1 else 'ies'} in it and its subfolders?\nThis cannot be undone."
+        ):
+            return
+
+        try:
+            for e in to_delete:
+                self.model.remove(e.id)
+            self.model.save()
+            # If the detail pane was showing one of the removed entries, clear it
+            if self.current_entry_id and any(e.id == self.current_entry_id for e in to_delete):
+                self._clear_detail()
+            self._refresh_tree()
+        except Exception as ex:
+            messagebox.showerror(APP_TITLE, f"Folder delete failed: {ex}")
+
 
     # Detail form state
     def _clear_detail(self):
