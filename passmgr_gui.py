@@ -128,21 +128,33 @@ class App(ttk.Frame):
         self.search_var = tk.StringVar()
         ttk.Label(toolbar, text="Search:").pack(side=tk.LEFT, padx=(8, 4))
         search_entry = ttk.Entry(toolbar, textvariable=self.search_var, width=32)
-        search_entry.pack(side=tk.LEFT, padx=4)
+        search_entry.pack(side=tk.LEFT, padx=(0, 6))
         search_entry.bind("<Return>", lambda e: self._refresh_tree())
-        ttk.Button(toolbar, text="Clear", command=self._clear_search).pack(side=tk.LEFT, padx=(4,12))
+        ttk.Button(toolbar, text="Clear", command=self._clear_search).pack(side=tk.LEFT, padx=(0, 16))
 
-        ttk.Button(toolbar, text="New Entry", command=self._new_entry).pack(side=tk.LEFT)
-        ttk.Button(toolbar, text="New Folder", command=self._new_folder).pack(side=tk.LEFT, padx=4)
-        ttk.Button(toolbar, text="Duplicate", command=self._duplicate_selected).pack(side=tk.LEFT, padx=4)
-        ttk.Button(toolbar, text="Delete", command=self._delete_selected).pack(side=tk.LEFT)
-        ttk.Button(toolbar, text="Delete Folder", command=self._delete_folder).pack(side=tk.LEFT)
-        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
-        ttk.Button(toolbar, text="Copy User", command=lambda: self._copy_field("username")).pack(side=tk.LEFT)
-        ttk.Button(toolbar, text="Copy Pass", command=lambda: self._copy_field("password")).pack(side=tk.LEFT, padx=4)
-        ttk.Button(toolbar, text="Open URL", command=self._open_url).pack(side=tk.LEFT)
-        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
-        ttk.Button(toolbar, text="Change Master", command=self._change_master).pack(side=tk.LEFT)
+        # main actions
+        for text, cmd in [
+            ("New Entry", self._new_entry),
+            ("New Folder", self._new_folder),
+            ("Duplicate", self._duplicate_selected),
+            ("Delete", self._delete_selected),
+            ("Delete Folder", self._delete_folder),
+        ]:
+            ttk.Button(toolbar, text=text, command=cmd).pack(side=tk.LEFT, padx=3)
+
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
+
+        # clipboard + url actions
+        for text, cmd in [
+            ("Copy User", lambda: self._copy_field("username")),
+            ("Copy Pass", lambda: self._copy_field("password")),
+            ("Open URL", self._open_url),
+        ]:
+            ttk.Button(toolbar, text=text, command=cmd).pack(side=tk.LEFT, padx=3)
+
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
+
+        ttk.Button(toolbar, text="Change Master", command=self._change_master).pack(side=tk.LEFT, padx=3)
 
         # Split panes
         paned = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
