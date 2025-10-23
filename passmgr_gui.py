@@ -22,7 +22,7 @@ import os
 import sys
 import webbrowser
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox, simpledialog, filedialog
 from typing import Dict, List, Tuple
 
 # --- import core vault logic from passmgr.py ---
@@ -576,32 +576,66 @@ class App(ttk.Frame):
 
 def main(argv=None):
     argv = argv or sys.argv[1:]
-    if not argv:
-        print("Usage: python passmgr_gui.py <vault.pm>")
-        return 1
-    vault_path = argv[0]
-    if not os.path.exists(vault_path):
-        messagebox.showerror(APP_TITLE, f"Vault not found: {vault_path}\nCreate one with CLI: python passmgr.py init {vault_path}")
-        return 2
-    # optional second arg = master pass (discouraged), else prompt inside passmgr.load_vault
-    password = argv[1] if len(argv) > 1 else None
 
     root = tk.Tk()
+    root.withdraw()  # hide until a vault is ready
+
+    # **If no argv, ask user to open or create a vault**
+    if not argv:
+        choice = messagebox.askyesno("Local Password Manager",
+                                     "Open an existing vault? (No = Create new)")
+        if choice:
+            path = filedialog.askopenfilename(title="Open Vault",
+                                              filetypes=[("Password Manager Vault","*.pm"),
+                                                         ("All Files","*.*")])
+            if not path:
+                return 1
+            vault_path = path
+        else:
+            path = filedialog.asksaveasfilename(title="Create New Vault",
+                                                defaultextension=".pm",
+                                                filetypes=[("Password Manager Vault","*.pm"),
+                                                           ("All Files","*.*")])
+            if not path:
+                return 1
+            pw1 = simpledialog.askstring("Local Password Manager", "Create master password:", show="*")
+            pw2 = simpledialog.askstring("Local Password Manager", "Confirm master password:", show="*")
+            if not pw1 or pw1 != pw2:
+                messagebox.showerror("Local Password Manager","Passwords did not match or were empty.")
+                return 1
+            passmgr.init_vault(path, pw1)
+            vault_path = path
+    else:
+        vault_path = argv[0]
+        if not os.path.exists(vault_path):
+            if not messagebox.askyesno("Local Password Manager",
+                                       f"Vault not found:\n{vault_path}\nCreate it now?"):
+                return 2
+            pw1 = simpledialog.askstring("Local Password Manager", "Create master password:", show="*")
+            pw2 = simpledialog.askstring("Local Password Manager", "Confirm master password:", show="*")
+            if not pw1 or pw1 != pw2:
+                messagebox.showerror("Local Password Manager","Passwords did not match or were empty.")
+                return 1
+            passmgr.init_vault(vault_path, pw1)
+
+    # show window and load model
+    root.deiconify()
+    model = VaultModel(vault_path, argv[1] if len(argv) > 1 else None)
+
+    # (optional) theme — use resource_path for PyInstaller
+    def resource_path(rel):
+        base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
+        return os.path.join(base, rel)
     try:
-        model = VaultModel(vault_path, password)
-    except Exception as ex:
-        messagebox.showerror(APP_TITLE, f"Failed to open vault: {ex}")
-        return 3
-    # nicer ttk theme if available
-    try:
-        from tkinter import font  # noqa: F401
-        root.call("source", os.path.join(os.path.dirname(__file__), "sun-valley.tcl"))
+        root.call("source", resource_path("sun-valley.tcl"))
         root.call("set_theme", "dark")
     except Exception:
         pass
+
     App(root, model)
     root.mainloop()
     return 0
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
