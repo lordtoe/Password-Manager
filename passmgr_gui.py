@@ -247,8 +247,7 @@ class App(ttk.Frame):
             parent = ensure_node(parts) if parts else ""
             item_text = f"🔐 {e.title}  ({e.username})"
             iid = self.tree.insert(parent, "end", text=item_text, values=(e.id,))
-            # store entry_id in iid tags map via columnless value
-            self.tree.set(iid, "entry_id", e.id)
+            
 
         self.current_entry_id = None
         self._clear_detail()
@@ -344,7 +343,7 @@ class App(ttk.Frame):
             self._select_recursive(iid, entry_id)
 
     def _select_recursive(self, iid: str, entry_id: str) -> bool:
-        val = self.tree.set(iid, column="#0")
+        val = self.tree.set(iid, "entry_id")
         if val == entry_id:
             self.tree.selection_set(iid)
             self.tree.see(iid)
