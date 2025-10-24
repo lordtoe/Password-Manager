@@ -608,6 +608,14 @@ def main(argv=None):
     argv = argv or sys.argv[1:]
 
     root = tk.Tk()
+    def resource_path(rel):
+        base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
+        return os.path.join(base, rel)
+
+    try:
+        root.iconbitmap(resource_path("app.ico"))
+    except Exception:
+        pass
     root.withdraw()  # hide until a vault is ready
 
     vault_path = None
