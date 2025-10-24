@@ -31,6 +31,15 @@ try:
 except Exception as e:
     raise SystemExit("Place passmgr.py next to this file. Original CLI/core is required.\n" + str(e))
 
+# Give Windows a stable identity for taskbar pinning/grouping
+try:
+    import ctypes
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+        "Lordtoe.LocalPasswordManager"  # any unique string
+    )
+except Exception:
+    pass
+
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".local_passmgr.cfg")
 Entry = passmgr.Entry
 
