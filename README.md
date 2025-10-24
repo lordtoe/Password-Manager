@@ -101,8 +101,4 @@
   • Clipboard auto-clear depends on OS focus timing (Windows limitation)
   • No built-in password generator (planned for future release)
 
-  Author: Lordtoe
-  -------
-  Secure. Simple. Offline by design.
-
-==============================================================================
+Icon Credit: <a href="https://www.flaticon.com/free-icons/security" title="security icons">Security icons created by Freepik - Flaticon</a>
