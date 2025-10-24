@@ -165,6 +165,7 @@ class App(ttk.Frame):
         # Left: folder tree
         left = ttk.Frame(paned)
         self.tree = ttk.Treeview(left, columns=("entry_id",), show="tree")
+        self.tree.column("entry_id", width=0, stretch=False)
         vsb = ttk.Scrollbar(left, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -609,6 +610,9 @@ def main(argv=None):
     root = tk.Tk()
     root.withdraw()  # hide until a vault is ready
 
+    vault_path = None
+    master_password = None
+
     # Try to load last used vault
     last_vault = None
     if os.path.exists(CONFIG_FILE):
@@ -617,78 +621,87 @@ def main(argv=None):
                 last_vault = f.read().strip()
         except Exception:
             pass
-    
-    if last_vault and os.path.exists(last_vault):
-    # Ask user if they want to reopen it
-        if messagebox.askyesno(APP_TITLE, f"Reopen last vault?\n\n{last_vault}"):
-            vault_path = last_vault
-            mpw = simpledialog.askstring(APP_TITLE, f"Master password for:\n{os.path.basename(vault_path)}", show="*")
+
+    def prompt_open_or_create():
+        """Return (vault_path, master_password) or (None, None) if user cancels."""
+        # Open existing?
+        if messagebox.askyesno(APP_TITLE, "Open an existing vault? (No = Create new)"):
+            path = filedialog.askopenfilename(
+                title="Open Vault",
+                filetypes=[("Password Manager Vault", "*.pm"), ("All Files", "*.*")]
+            )
+            if not path:
+                return None, None
+            mpw = simpledialog.askstring(APP_TITLE, "Master password:", show="*")
             if not mpw:
+                return None, None
+            return path, mpw
+        # Create new
+        path = filedialog.asksaveasfilename(
+            title="Create New Vault",
+            defaultextension=".pm",
+            filetypes=[("Password Manager Vault", "*.pm"), ("All Files", "*.*")]
+        )
+        if not path:
+            return None, None
+        pw1 = simpledialog.askstring(APP_TITLE, "Create master password:", show="*")
+        pw2 = simpledialog.askstring(APP_TITLE, "Confirm master password:", show="*")
+        if not pw1 or pw1 != pw2:
+            messagebox.showerror(APP_TITLE, "Passwords did not match or were empty.")
+            return None, None
+        try:
+            passmgr.init_vault(path, pw1)
+        except Exception as ex:
+            messagebox.showerror(APP_TITLE, f"Failed to create vault: {ex}")
+            return None, None
+        return path, pw1
+
+    # 1) If a CLI path was provided, use it.
+    if argv:
+        candidate = argv[0]
+        if not os.path.exists(candidate):
+            if not messagebox.askyesno(APP_TITLE, f"Vault not found:\n{candidate}\nCreate it now?"):
                 return 0
-            master_password = mpw
-        else:
-            # fall back to the open/create prompt
-            choice = messagebox.askyesno(APP_TITLE, "Open an existing vault? (No = Create new)")
-            if choice:
-                path = filedialog.askopenfilename(title="Open Vault",
-                                                filetypes=[("Password Manager Vault","*.pm"),
-                                                            ("All Files","*.*")])
-                if not path:
-                    return 0
-                vault_path = path
-                mpw = simpledialog.askstring(APP_TITLE, "Master password:", show="*")
-                if not mpw:
-                    return 0
-                master_password = mpw
-            else:
-                path = filedialog.asksaveasfilename(title="Create New Vault",
-                                                    defaultextension=".pm",
-                                                    filetypes=[("Password Manager Vault","*.pm"),
-                                                            ("All Files","*.*")])
-                if not path:
-                    return 0
-                pw1 = simpledialog.askstring(APP_TITLE, "Create master password:", show="*")
-                pw2 = simpledialog.askstring(APP_TITLE, "Confirm master password:", show="*")
-                if not pw1 or pw1 != pw2:
-                    messagebox.showerror(APP_TITLE,"Passwords did not match or were empty.")
-                    return 0
-                try:
-                    passmgr.init_vault(path, pw1)
-                except Exception as ex:
-                    messagebox.showerror(APP_TITLE, f"Failed to create vault: {ex}")
-                    return 1
-                vault_path = path
-                master_password = pw1
-        
-            
-    else:
-        vault_path = argv[0]
-        if not os.path.exists(vault_path):
-            if not messagebox.askyesno(APP_TITLE,
-                                       f"Vault not found:\n{vault_path}\nCreate it now?"):
-                return 2
             pw1 = simpledialog.askstring(APP_TITLE, "Create master password:", show="*")
             pw2 = simpledialog.askstring(APP_TITLE, "Confirm master password:", show="*")
             if not pw1 or pw1 != pw2:
-                messagebox.showerror(APP_TITLE,"Passwords did not match or were empty.")
+                messagebox.showerror(APP_TITLE, "Passwords did not match or were empty.")
                 return 0
             try:
-                passmgr.init_vault(vault_path, pw1)
+                passmgr.init_vault(candidate, pw1)
             except Exception as ex:
                 messagebox.showerror(APP_TITLE, f"Failed to create vault: {ex}")
                 return 1
-            master_password = pw1
+            vault_path, master_password = candidate, pw1
         else:
-            # Opening existing via argv: ask for password in GUI
-            mpw = simpledialog.askstring(APP_TITLE, "Master password:", show="*")
+            mpw = simpledialog.askstring(APP_TITLE, f"Master password for:\n{os.path.basename(candidate)}", show="*")
             if not mpw:
                 return 0
-            master_password = mpw
+            vault_path, master_password = candidate, mpw
 
-    # show window and load model
+    # 2) No CLI: offer to reopen last vault if present.
+    elif last_vault and os.path.exists(last_vault):
+        if messagebox.askyesno(APP_TITLE, f"Reopen last vault?\n\n{last_vault}"):
+            mpw = simpledialog.askstring(APP_TITLE, f"Master password for:\n{os.path.basename(last_vault)}", show="*")
+            if not mpw:
+                return 0
+            vault_path, master_password = last_vault, mpw
+        else:
+            vault_path, master_password = prompt_open_or_create()
+            if not vault_path:
+                return 0
+
+    # 3) No CLI, no last vault: prompt open/create.
+    else:
+        vault_path, master_password = prompt_open_or_create()
+        if not vault_path:
+            return 0
+
+    # Show window and load model
     root.deiconify()
     try:
         model = VaultModel(vault_path, master_password)
+        # Remember last vault path
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 f.write(vault_path)
@@ -698,7 +711,7 @@ def main(argv=None):
         messagebox.showerror(APP_TITLE, f"Failed to open vault: {ex}")
         return 1
 
-    # Optional theme (works in PyInstaller; safe to ignore if missing)
+    # Optional theme (safe if missing)
     def resource_path(rel):
         base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
         return os.path.join(base, rel)
