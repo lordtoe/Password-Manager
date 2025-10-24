@@ -616,13 +616,23 @@ class App(ttk.Frame):
 def main(argv=None):
     argv = argv or sys.argv[1:]
 
-    root = tk.Tk()
     def resource_path(rel):
         base = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
         return os.path.join(base, rel)
 
+    root = tk.Tk()
+
+    # .ico for window/taskbar
     try:
         root.iconbitmap(resource_path("app.ico"))
+    except Exception:
+        pass
+
+    # (Optional but helps on some setups): also set a PNG taskbar icon
+    # Include app.png beside app.ico and add it with --add-data
+    try:
+        img = tk.PhotoImage(file=resource_path("app.png"))
+        root.iconphoto(False, img)
     except Exception:
         pass
     root.withdraw()  # hide until a vault is ready
