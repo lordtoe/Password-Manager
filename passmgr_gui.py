@@ -41,7 +41,8 @@ try:
 except Exception:
     pass
 
-CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".local_passmgr.cfg")
+SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".local_passmgr_settings.json")
+LASTVAULT_FILE = os.path.join(os.path.expanduser("~"), ".local_passmgr_lastvault.txt")
 Entry = passmgr.Entry
 
 APP_TITLE = "Local Password Manager"
@@ -159,14 +160,10 @@ class App(ttk.Frame):
             "autolock_minutes": 15,
         }
 
-        # One consistent config file path
-        cfg = os.path.join(os.path.expanduser("~"), ".local_passmgr.cfg")
-        self.config_path = cfg
-
-        # Load existing settings if present
-        if os.path.exists(cfg):
+        self.config_path = SETTINGS_FILE
+        if os.path.exists(SETTINGS_FILE):
             try:
-                with open(cfg, "r", encoding="utf-8") as f:
+                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     if isinstance(data, dict):
                         self.settings.update(data)
@@ -412,6 +409,14 @@ class App(ttk.Frame):
             messagebox.showerror(APP_TITLE, "Incorrect password.")
             self._unlock_dialog()
 
+    def _save_settings(self):
+            import json
+            try:
+                with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                    json.dump(self.settings, f, indent=2)
+            except Exception as e:
+                print("Failed to save settings:", e)
+    
     def _open_options(self):
         win = tk.Toplevel(self)
         win.title("Options")
@@ -435,7 +440,9 @@ class App(ttk.Frame):
             self.settings["autolock"] = auto_var.get()
             self.settings["autolock_minutes"] = mins_var.get()
             self._save_settings()
+            self._reset_lock_timer()
             win.destroy()
+        
         ttk.Button(win, text="Close", command=save_and_close).pack(pady=10)
 
     def _clear_search(self):
@@ -925,9 +932,9 @@ def main(argv=None):
 
     # Try to load last used vault
     last_vault = None
-    if os.path.exists(CONFIG_FILE):
+    if os.path.exists(LASTVAULT_FILE):
         try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            with open(LASTVAULT_FILE, "r", encoding="utf-8") as f:
                 last_vault = f.read().strip()
         except Exception:
             pass
@@ -1013,7 +1020,7 @@ def main(argv=None):
         model = VaultModel(vault_path, master_password)
         # Remember last vault path
         try:
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            with open(LASTVAULT_FILE, "w", encoding="utf-8") as f:
                 f.write(vault_path)
         except Exception:
             pass
