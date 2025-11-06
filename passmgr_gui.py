@@ -122,12 +122,33 @@ class App(ttk.Frame):
     def __init__(self, master: tk.Tk, model: VaultModel):
         super().__init__(master)
         self.model = model
+        self._load_settings()  # initialize generator + app settings
         self.pack(fill=tk.BOTH, expand=True)
         master.title(f"{APP_TITLE} — {os.path.basename(model.path)}")
         master.geometry("1000x640")
 
         self._build_ui()
         self._refresh_tree()
+
+    def _load_settings(self):
+        """Initialize or load saved generator and app settings."""
+        import json
+        self.settings = {
+            "gen_mode": "random",
+            "gen_length": 16,
+            "gen_uppercase": True,
+            "gen_specials": "!@#$%^&*()-_=+[]{};:,<.>/?",
+        }
+        cfg = os.path.join(os.path.expanduser("~"), ".local_passmgr.cfg")
+        if os.path.exists(cfg):
+            try:
+                with open(cfg, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        self.settings.update(data)
+            except Exception:
+                pass
+        self.config_path = cfg
 
     # UI building
     def _build_ui(self):
@@ -210,8 +231,16 @@ class App(ttk.Frame):
         pass_row = ttk.Frame(frm)
         ent_pass = ttk.Entry(pass_row, textvariable=self.var_password, show="•")
         ent_pass.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
         self._showing_pass = False
-        ttk.Button(pass_row, text="Show", width=6, command=lambda: self._toggle_pass(ent_pass)).pack(side=tk.LEFT, padx=6)
+
+        # --- New Generate button ---
+        ttk.Button(pass_row, text="Generate", width=8,
+                command=lambda: self._generate_password(ent_pass)).pack(side=tk.LEFT, padx=(6, 2))
+        # Existing Show button
+        ttk.Button(pass_row, text="Show", width=6,
+                command=lambda: self._toggle_pass(ent_pass)).pack(side=tk.LEFT, padx=(2, 6))
+
         add_row("Password", pass_row)
 
         add_row("URL", ttk.Entry(frm, textvariable=self.var_url))
@@ -229,6 +258,14 @@ class App(ttk.Frame):
         paned.add(right, weight=2)
 
     # Helpers
+    def _save_settings(self):
+        import json
+        try:
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                json.dump(self.settings, f, indent=2)
+        except Exception:
+            pass
+
     def _clear_search(self):
         self.search_var.set("")
         self._refresh_tree()
@@ -236,6 +273,43 @@ class App(ttk.Frame):
     def _toggle_pass(self, entry_widget: ttk.Entry):
         self._showing_pass = not self._showing_pass
         entry_widget.config(show="" if self._showing_pass else "•")
+
+    def _generate_password(self, entry_widget):
+        """Generate a password using saved preferences and fill the password field."""
+        import secrets, string
+
+        # Confirm overwrite if password field already has content
+        current = self.var_password.get()
+        if current.strip():
+            if not messagebox.askyesno(APP_TITLE, "Replace existing password?"):
+                return
+
+        # Load preferences (defaults if not set)
+        mode = self.settings.get("gen_mode", "random")
+        length = int(self.settings.get("gen_length", 16))
+        uppercase = self.settings.get("gen_uppercase", True)
+        specials = self.settings.get("gen_specials", "!@#$%^&*()-_=+[]{};:,<.>/?")
+
+        # Generate password
+        if mode == "random":
+            chars = string.ascii_lowercase + string.digits + specials
+            if uppercase:
+                chars += string.ascii_uppercase
+            password = "".join(secrets.choice(chars) for _ in range(length))
+        else:
+            # simple phonetic/rememberable token mode
+            syllables = ["ba","be","bi","bo","bu","da","de","di","do","du",
+                        "ka","ke","ki","ko","ku","ra","re","ri","ro","ru",
+                        "ta","te","ti","to","tu"]
+            token = "".join(secrets.choice(syllables).capitalize() if uppercase
+                            else secrets.choice(syllables)
+                            for _ in range(max(2, length//3)))
+            password = token + secrets.choice(specials) + str(secrets.randbelow(100))
+
+        # Apply and update field
+        self.var_password.set(password)
+        entry_widget.icursor(tk.END)
+        messagebox.showinfo(APP_TITLE, "New password generated and applied.")
 
     def _open_url(self):
         url = self.var_url.get().strip()
