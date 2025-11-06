@@ -130,6 +130,11 @@ class App(ttk.Frame):
 
         self._build_ui()
         self._refresh_tree()
+        self._lock_timer = None
+        self._locked = False
+        self._reset_lock_timer()
+        master.bind_all("<Any-KeyPress>", self._reset_lock_timer)
+        master.bind_all("<Any-Button>", self._reset_lock_timer)
 
     def _load_settings(self):
         """Initialize or load saved generator and app settings."""
@@ -324,6 +329,39 @@ class App(ttk.Frame):
         paned.add(right, weight=2)
 
     # Helpers
+    def _reset_lock_timer(self, event=None):
+        """Reset the inactivity timer."""
+        if not self.settings.get("autolock", True) or self._locked:
+            return
+        if self._lock_timer:
+            self.after_cancel(self._lock_timer)
+        timeout_ms = self.settings.get("autolock_minutes", 15) * 60 * 1000
+        self._lock_timer = self.after(timeout_ms, self._trigger_autolock)
+
+    def _trigger_autolock(self):
+        """Hide content and require master password again."""
+        self._locked = True
+        self._clear_detail()
+        for i in self.tree.get_children(""):
+            self.tree.detach(i)  # visually hide everything
+        messagebox.showinfo(APP_TITLE, "Session locked due to inactivity.")
+        self._unlock_dialog()
+
+    def _unlock_dialog(self):
+        """Prompt for master password and reload vault."""
+        mpw = simpledialog.askstring(APP_TITLE, "Session locked.\nEnter master password:", show="*")
+        if not mpw:
+            messagebox.showinfo(APP_TITLE, "Application remains locked.")
+            return
+        try:
+            self.model = VaultModel(self.model.path, mpw)
+            self._locked = False
+            self._refresh_tree()
+            self._reset_lock_timer()
+        except Exception:
+            messagebox.showerror(APP_TITLE, "Incorrect password.")
+            self._unlock_dialog()
+
     def _open_options(self):
         win = tk.Toplevel(self)
         win.title("Options")
@@ -331,15 +369,19 @@ class App(ttk.Frame):
         win.transient(self)
         win.grab_set()
 
-        auto_var = tk.BooleanVar(value=self.settings.get("autolock", False))
-        ttk.Checkbutton(win, text="Enable auto-lock (15 min)", variable=auto_var).pack(anchor="w", padx=20, pady=10)
-
         ttk.Button(win, text="Change Master Password", command=self._change_master).pack(fill="x", padx=20, pady=6)
         ttk.Button(win, text="Create New Vault", command=self._new_vault).pack(fill="x", padx=20, pady=6)
         ttk.Button(win, text="Password Generator Settings", command=self._open_generator).pack(fill="x", padx=20, pady=6)
 
+        auto_var = tk.BooleanVar(value=self.settings.get("autolock", True))
+        mins_var = tk.IntVar(value=self.settings.get("autolock_minutes", 15))
+        ttk.Checkbutton(win, text="Enable auto-lock", variable=auto_var).pack(anchor="w", padx=20, pady=(8,4))
+        ttk.Label(win, text="Lock after (minutes):").pack(anchor="w", padx=20)
+        ttk.Spinbox(win, from_=1, to=60, textvariable=mins_var, width=5).pack(anchor="w", padx=30)
+
         def save_and_close():
             self.settings["autolock"] = auto_var.get()
+            self.settings["autolock_minutes"] = mins_var.get()
             self._save_settings()
             win.destroy()
         ttk.Button(win, text="Close", command=save_and_close).pack(pady=10)
@@ -350,6 +392,8 @@ class App(ttk.Frame):
             "gen_length": 16,
             "gen_uppercase": True,
             "gen_specials": "!@#$%^&*()-_=+[]{};:,<.>/?",
+            "autolock": True,
+            "autolock_minutes": 15,
         }
         if os.path.exists(CONFIG_FILE):
             try:
@@ -359,6 +403,7 @@ class App(ttk.Frame):
                         self.settings.update(data)
             except Exception:
                 pass
+        
 
     def _save_settings(self):
         try:
