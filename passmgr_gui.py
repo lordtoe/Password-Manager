@@ -327,6 +327,19 @@ class App(ttk.Frame):
 
         add_row("Password", pass_row)
 
+        # --- Password strength gauge ---
+        strength_frame = ttk.Frame(frm)
+        strength_frame.grid(row=row, column=1, sticky="w", pady=(2, 6))
+        self.strength_canvas = tk.Canvas(strength_frame, width=200, height=12, highlightthickness=1, relief="solid", bd=0)
+        self.strength_canvas.pack(side=tk.LEFT, padx=(0, 8))
+        self.strength_label = ttk.Label(strength_frame, text="No Password", anchor="w")
+        self.strength_label.pack(side=tk.LEFT, padx=(2, 0))
+        self.strength_label.pack(side=tk.LEFT)
+        row += 1
+
+        # react to password changes
+        self.var_password.trace_add("write", self._update_strength_bar)
+
         add_row("URL", ttk.Entry(frm, textvariable=self.var_url))
         ttk.Label(frm, text="Note").grid(row=row, column=0, sticky="ne", padx=(0,8), pady=(8,4))
         self.var_note.grid(row=row, column=1, sticky="nsew", pady=(8,4))
@@ -450,6 +463,43 @@ class App(ttk.Frame):
     def _toggle_pass(self, entry_widget: ttk.Entry):
         self._showing_pass = not self._showing_pass
         entry_widget.config(show="" if self._showing_pass else "•")
+
+    def _update_strength_bar(self, *args):
+        """Evaluate password strength and update the color bar."""
+        pwd = self.var_password.get()
+        score = 0
+
+        # Scoring criteria
+        if len(pwd) == 0:
+            color, label = "#111827", "No Password"  # Tailwind gray-900
+        else:
+            if len(pwd) >= 8:
+                score += 1
+            if any(c.islower() for c in pwd):
+                score += 1
+            if any(c.isupper() for c in pwd):
+                score += 1
+            if any(c.isdigit() for c in pwd):
+                score += 1
+            if any(c in "!@#$%^&*()-_=+[]{};:,<.>/?\\" for c in pwd):
+                score += 1
+
+            # Determine color and label
+            if score <= 1:
+                color, label = "#EF4444", "Weak"        # Tailwind red-500
+            elif score == 2:
+                color, label = "#F97316", "Risky"       # Tailwind orange-500
+            elif score == 3:
+                color, label = "#EAB308", "Okay"        # Tailwind yellow-500
+            elif score == 4:
+                color, label = "#22C55E", "Good"        # Tailwind green-500
+            else:
+                color, label = "#3B82F6", "Great"       # Tailwind blue-500
+
+        # Update the canvas bar and text
+        self.strength_canvas.delete("all")
+        self.strength_canvas.create_rectangle(0, 0, 200, 12, fill=color, outline="")
+        self.strength_label.config(text=label, foreground=color)
 
     def _generate_password(self, entry_widget):
         """Generate a password using saved preferences and fill the password field."""
