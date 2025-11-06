@@ -126,7 +126,16 @@ class App(ttk.Frame):
         self._load_settings()  # initialize generator + app settings
         self.pack(fill=tk.BOTH, expand=True)
         master.title(f"{APP_TITLE} — {os.path.basename(model.path)}")
-        master.geometry("1000x640")
+        
+        # Dynamically size main window to 70% of screen width and 70% of height
+        screen_w = master.winfo_screenwidth()
+        screen_h = master.winfo_screenheight()
+        win_w = max(1000, int(screen_w * 0.5))
+        win_h = max(640, int(screen_h * 0.5))
+        x = (screen_w // 2) - (win_w // 2)
+        y = (screen_h // 2) - (win_h // 2)
+        master.geometry(f"{win_w}x{win_h}+{x}+{y}")
+        master.minsize(900, 600)
 
         self._build_ui()
         self._refresh_tree()
@@ -159,9 +168,10 @@ class App(ttk.Frame):
     def _open_generator(self):
         win = tk.Toplevel(self)
         win.title("Password Generator")
-        win.geometry("400x250")
         win.transient(self)
         win.grab_set()
+        self._center_window(win)
+
 
         ttk.Label(win, text="Mode:").pack(anchor="w", padx=12, pady=(10,0))
         mode = tk.StringVar(value=self.settings.get("gen_mode", "random"))
@@ -218,6 +228,11 @@ class App(ttk.Frame):
             self._save_settings()
             win.destroy()
         ttk.Button(win, text="Close", command=save_and_close).pack(pady=6)
+
+        win.update_idletasks()
+        width = max(420, win.winfo_reqwidth() + 40)
+        height = max(300, win.winfo_reqheight() + 20)
+        win.geometry(f"{width}x{height}")
 
     # UI building
     def _build_ui(self):
@@ -329,6 +344,20 @@ class App(ttk.Frame):
         paned.add(right, weight=2)
 
     # Helpers
+    def _center_window(self, win, width=None, height=None):
+        """Center a Toplevel window over the main app."""
+        win.update_idletasks()
+        if width and height:
+            win.geometry(f"{width}x{height}")
+        else:
+            width = win.winfo_width()
+            height = win.winfo_height()
+        x = self.winfo_rootx() + (self.winfo_width() // 2) - (width // 2)
+        y = self.winfo_rooty() + (self.winfo_height() // 2) - (height // 2)
+        win.geometry(f"+{x}+{y}")
+        win.lift()
+        win.focus_force()
+
     def _reset_lock_timer(self, event=None):
         """Reset the inactivity timer."""
         if not self.settings.get("autolock", True) or self._locked:
@@ -368,6 +397,8 @@ class App(ttk.Frame):
         win.geometry("300x200")
         win.transient(self)
         win.grab_set()
+        self._center_window(win)
+
 
         ttk.Button(win, text="Change Master Password", command=self._change_master).pack(fill="x", padx=20, pady=6)
         ttk.Button(win, text="Create New Vault", command=self._new_vault).pack(fill="x", padx=20, pady=6)
