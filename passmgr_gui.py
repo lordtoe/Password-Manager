@@ -22,6 +22,7 @@ import os
 import sys
 import webbrowser
 import tkinter as tk
+import json, secrets, string
 from tkinter import ttk, messagebox, simpledialog, filedialog
 from typing import Dict, List, Tuple
 
@@ -149,6 +150,69 @@ class App(ttk.Frame):
             except Exception:
                 pass
         self.config_path = cfg
+    
+    def _open_generator(self):
+        win = tk.Toplevel(self)
+        win.title("Password Generator")
+        win.geometry("400x250")
+        win.transient(self)
+        win.grab_set()
+
+        ttk.Label(win, text="Mode:").pack(anchor="w", padx=12, pady=(10,0))
+        mode = tk.StringVar(value=self.settings.get("gen_mode", "random"))
+        ttk.Radiobutton(win, text="Secure random", variable=mode, value="random").pack(anchor="w", padx=20)
+        ttk.Radiobutton(win, text="Phonetic token", variable=mode, value="phonetic").pack(anchor="w", padx=20)
+
+        ttk.Label(win, text="Length:").pack(anchor="w", padx=12, pady=(10,0))
+        length = tk.IntVar(value=self.settings.get("gen_length", 16))
+        ttk.Spinbox(win, from_=6, to=64, textvariable=length, width=6).pack(anchor="w", padx=20)
+
+        uppercase = tk.BooleanVar(value=self.settings.get("gen_uppercase", True))
+        ttk.Checkbutton(win, text="Include uppercase letters", variable=uppercase).pack(anchor="w", padx=20, pady=4)
+
+        specials_frame = ttk.Frame(win)
+        specials_frame.pack(fill="x", padx=20, pady=(6,0))
+        ttk.Label(specials_frame, text="Special characters:").pack(anchor="w")
+        special_entry = ttk.Entry(specials_frame)
+        special_entry.insert(0, self.settings.get("gen_specials", "!@#$%^&*"))
+        special_entry.pack(fill="x")
+
+        output_var = tk.StringVar()
+        out = ttk.Entry(win, textvariable=output_var, width=40)
+        out.pack(padx=20, pady=(10,6), fill="x")
+
+        def generate():
+            mode_val = mode.get()
+            if mode_val == "random":
+                chars = string.ascii_lowercase
+                if uppercase.get():
+                    chars += string.ascii_uppercase
+                chars += string.digits
+                chars += special_entry.get()
+                result = "".join(secrets.choice(chars) for _ in range(length.get()))
+            else:
+                syllables = ["ba","be","bi","bo","bu","da","de","di","do","du","ka","ke","ki","ko","ku","ra","re","ri","ro","ru","ta","te","ti","to","tu"]
+                result = "".join(secrets.choice(syllables).capitalize() if uppercase.get() else secrets.choice(syllables) for _ in range(max(2, length.get()//3)))
+                if special_entry.get():
+                    result += secrets.choice(special_entry.get())
+                result += str(secrets.randbelow(100))
+            output_var.set(result)
+
+        def use_password():
+            self.var_password.set(output_var.get())
+            win.destroy()
+
+        ttk.Button(win, text="Generate", command=generate).pack(pady=4)
+        ttk.Button(win, text="Use Password", command=use_password).pack(pady=4)
+
+        def save_and_close():
+            self.settings["gen_mode"] = mode.get()
+            self.settings["gen_length"] = length.get()
+            self.settings["gen_uppercase"] = uppercase.get()
+            self.settings["gen_specials"] = special_entry.get()
+            self._save_settings()
+            win.destroy()
+        ttk.Button(win, text="Close", command=save_and_close).pack(pady=6)
 
     # UI building
     def _build_ui(self):
@@ -162,6 +226,7 @@ class App(ttk.Frame):
         search_entry.pack(side=tk.LEFT, padx=(0, 6))
         search_entry.bind("<Return>", lambda e: self._refresh_tree())
         ttk.Button(toolbar, text="Clear", command=self._clear_search).pack(side=tk.LEFT, padx=(0, 16))
+        ttk.Button(toolbar, text="Options", command=self._open_options).pack(side=tk.LEFT, padx=3)
 
         # main actions
         for text, cmd in [
@@ -185,8 +250,7 @@ class App(ttk.Frame):
 
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
 
-        ttk.Button(toolbar, text="Change Master", command=self._change_master).pack(side=tk.LEFT, padx=3)
-        ttk.Button(toolbar, text="New Vault", command=self._new_vault).pack(side=tk.LEFT, padx=3)
+        
 
         # Split panes
         paned = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
@@ -249,6 +313,8 @@ class App(ttk.Frame):
         frm.rowconfigure(row, weight=1)
         row += 1
 
+    
+
         # action buttons
         actions = ttk.Frame(frm)
         actions.grid(row=row, column=1, sticky="e")
@@ -258,10 +324,45 @@ class App(ttk.Frame):
         paned.add(right, weight=2)
 
     # Helpers
+    def _open_options(self):
+        win = tk.Toplevel(self)
+        win.title("Options")
+        win.geometry("300x200")
+        win.transient(self)
+        win.grab_set()
+
+        auto_var = tk.BooleanVar(value=self.settings.get("autolock", False))
+        ttk.Checkbutton(win, text="Enable auto-lock (15 min)", variable=auto_var).pack(anchor="w", padx=20, pady=10)
+
+        ttk.Button(win, text="Change Master Password", command=self._change_master).pack(fill="x", padx=20, pady=6)
+        ttk.Button(win, text="Create New Vault", command=self._new_vault).pack(fill="x", padx=20, pady=6)
+        ttk.Button(win, text="Password Generator Settings", command=self._open_generator).pack(fill="x", padx=20, pady=6)
+
+        def save_and_close():
+            self.settings["autolock"] = auto_var.get()
+            self._save_settings()
+            win.destroy()
+        ttk.Button(win, text="Close", command=save_and_close).pack(pady=10)
+
+    def _load_settings(self):
+        self.settings = {
+            "gen_mode": "random",
+            "gen_length": 16,
+            "gen_uppercase": True,
+            "gen_specials": "!@#$%^&*()-_=+[]{};:,<.>/?",
+        }
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        self.settings.update(data)
+            except Exception:
+                pass
+
     def _save_settings(self):
-        import json
         try:
-            with open(self.config_path, "w", encoding="utf-8") as f:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.settings, f, indent=2)
         except Exception:
             pass
