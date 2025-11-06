@@ -382,8 +382,8 @@ class App(ttk.Frame):
             return
         if self._lock_timer:
             self.after_cancel(self._lock_timer)
-        timeout_ms = self.settings.get("autolock_minutes", 15) * 60 * 1000
-        self._lock_timer = self.after(timeout_ms, self._trigger_autolock)
+        timeout_min = int(self.settings.get("autolock_minutes", 15))
+        self._lock_timer = self.after(timeout_min * 60 * 1000, self._trigger_autolock)
 
     def _trigger_autolock(self):
         """Hide content and require master password again."""
@@ -412,38 +412,47 @@ class App(ttk.Frame):
     def _save_settings(self):
             import json
             try:
-                with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                with open(self.config_path, "w", encoding="utf-8") as f:
                     json.dump(self.settings, f, indent=2)
             except Exception as e:
                 print("Failed to save settings:", e)
     
     def _open_options(self):
+        self._load_settings()
         win = tk.Toplevel(self)
         win.title("Options")
-        win.geometry("300x200")
         win.transient(self)
         win.grab_set()
         self._center_window(win)
 
 
-        ttk.Button(win, text="Change Master Password", command=self._change_master).pack(fill="x", padx=20, pady=6)
-        ttk.Button(win, text="Create New Vault", command=self._new_vault).pack(fill="x", padx=20, pady=6)
-        ttk.Button(win, text="Password Generator Settings", command=self._open_generator).pack(fill="x", padx=20, pady=6)
+        ttk.Button(win, text="Change Master Password", command=self._change_master, width=22).pack(fill="x", padx=20, pady=4)
+        vault_frame = ttk.Frame(win)
+        vault_frame.pack(fill="x", padx=20, pady=4)
+        ttk.Button(vault_frame, text="Open Vault", command=self._open_vault, width=16).pack(side=tk.LEFT, expand=True, padx=(0, 6))
+        ttk.Button(vault_frame, text="New Vault", command=self._new_vault, width=16).pack(side=tk.LEFT, expand=True)
+        ttk.Button(win, text="Password Generator Settings", command=self._open_generator, width=22).pack(fill="x", padx=20, pady=4)
 
         auto_var = tk.BooleanVar(value=self.settings.get("autolock", True))
-        mins_var = tk.IntVar(value=self.settings.get("autolock_minutes", 15))
+        mins_var = tk.IntVar(value=int(self.settings.get("autolock_minutes", 15)))
         ttk.Checkbutton(win, text="Enable auto-lock", variable=auto_var).pack(anchor="w", padx=20, pady=(8,4))
         ttk.Label(win, text="Lock after (minutes):").pack(anchor="w", padx=20)
         ttk.Spinbox(win, from_=1, to=60, textvariable=mins_var, width=5).pack(anchor="w", padx=30)
 
         def save_and_close():
-            self.settings["autolock"] = auto_var.get()
-            self.settings["autolock_minutes"] = mins_var.get()
+            self.settings["autolock"] = bool(auto_var.get())
+            self.settings["autolock_minutes"] = int(mins_var.get())
             self._save_settings()
             self._reset_lock_timer()
             win.destroy()
         
         ttk.Button(win, text="Close", command=save_and_close).pack(pady=10)
+
+        win.update_idletasks()
+        width = max(360, win.winfo_reqwidth() + 40)
+        height = max(300, win.winfo_reqheight() + 20)
+        win.geometry(f"{width}x{height}")
+        self._center_window(win)
 
     def _clear_search(self):
         self.search_var.set("")
@@ -751,6 +760,33 @@ class App(ttk.Frame):
         return True
 
     # Actions
+    def _open_vault(self):
+        """Open an existing vault and reload it into the app."""
+        from tkinter import filedialog, simpledialog, messagebox
+
+        path = filedialog.askopenfilename(
+            title="Open Vault",
+            filetypes=[("Password Manager Vault", "*.pm"), ("All Files", "*.*")]
+        )
+        if not path:
+            return
+
+        mpw = simpledialog.askstring(APP_TITLE, f"Master password for:\n{os.path.basename(path)}", show="*")
+        if not mpw:
+            return
+
+        try:
+            self.model = VaultModel(path, mpw)
+            self._refresh_tree()
+            self._clear_detail()
+            self._select_entry_id(None)
+            # remember last opened vault
+            with open(LASTVAULT_FILE, "w", encoding="utf-8") as f:
+                f.write(path)
+            messagebox.showinfo(APP_TITLE, f"Vault '{os.path.basename(path)}' opened successfully.")
+        except Exception as ex:
+            messagebox.showerror(APP_TITLE, f"Failed to open vault:\n{ex}")
+
     def _new_vault(self):
         """Create a brand new vault file from the running GUI."""
         from tkinter import simpledialog, filedialog, messagebox
