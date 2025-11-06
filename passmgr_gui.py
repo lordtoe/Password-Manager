@@ -146,15 +146,24 @@ class App(ttk.Frame):
         master.bind_all("<Any-Button>", self._reset_lock_timer)
 
     def _load_settings(self):
-        """Initialize or load saved generator and app settings."""
+        """Initialize or load saved generator + app settings."""
         import json
+
+        # Default settings
         self.settings = {
             "gen_mode": "random",
             "gen_length": 16,
             "gen_uppercase": True,
             "gen_specials": "!@#$%^&*()-_=+[]{};:,<.>/?",
+            "autolock": True,
+            "autolock_minutes": 15,
         }
+
+        # One consistent config file path
         cfg = os.path.join(os.path.expanduser("~"), ".local_passmgr.cfg")
+        self.config_path = cfg
+
+        # Load existing settings if present
         if os.path.exists(cfg):
             try:
                 with open(cfg, "r", encoding="utf-8") as f:
@@ -163,7 +172,6 @@ class App(ttk.Frame):
                         self.settings.update(data)
             except Exception:
                 pass
-        self.config_path = cfg
     
     def _open_generator(self):
         win = tk.Toplevel(self)
@@ -429,32 +437,6 @@ class App(ttk.Frame):
             self._save_settings()
             win.destroy()
         ttk.Button(win, text="Close", command=save_and_close).pack(pady=10)
-
-    def _load_settings(self):
-        self.settings = {
-            "gen_mode": "random",
-            "gen_length": 16,
-            "gen_uppercase": True,
-            "gen_specials": "!@#$%^&*()-_=+[]{};:,<.>/?",
-            "autolock": True,
-            "autolock_minutes": 15,
-        }
-        if os.path.exists(CONFIG_FILE):
-            try:
-                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, dict):
-                        self.settings.update(data)
-            except Exception:
-                pass
-        
-
-    def _save_settings(self):
-        try:
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.settings, f, indent=2)
-        except Exception:
-            pass
 
     def _clear_search(self):
         self.search_var.set("")
